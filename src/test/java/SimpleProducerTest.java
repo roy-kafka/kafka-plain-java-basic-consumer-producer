@@ -4,6 +4,7 @@ import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -14,7 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 @Slf4j
 class SimpleProducerTest {
 
-  private final KafkaProducer<String, String> kafkaProducer = new SimpleProducer().getKafkaProducer();
+  private static final KafkaProducer<String, String> kafkaProducer = new SimpleProducer().getKafkaProducer();
+
+  @AfterAll
+  static void postActions() {
+    kafkaProducer.close();
+  }
 
   @Test
   void testProduceValueOnly() {
@@ -23,10 +29,8 @@ class SimpleProducerTest {
         new ProducerRecord<>("simple-topic", "Hello world!!!");
 
     Future<RecordMetadata> promise = kafkaProducer.send(simpleProducerRecord);
-    kafkaProducer.close();
 
     assertNotNull(promise);
-
   }
 
   @Test
@@ -36,7 +40,6 @@ class SimpleProducerTest {
         new ProducerRecord<>("simple-topic", "Hello world!!!");
 
     kafkaProducer.send(simpleProducerRecord, (this::logCallBack));
-    kafkaProducer.close();
   }
 
   @Test
@@ -45,10 +48,8 @@ class SimpleProducerTest {
       ProducerRecord<String, String> simpleProducerRecord =
           new ProducerRecord<>("simple-topic", String.format("Send message: %d", i));
 
-      kafkaProducer.send(simpleProducerRecord, (this::logCallBack));
+      kafkaProducer.send(simpleProducerRecord, this::logCallBack);
     }
-
-    kafkaProducer.close();
   }
 
   private void logCallBack(RecordMetadata metadata, Exception exception) {
@@ -61,6 +62,27 @@ class SimpleProducerTest {
           log.info("Offset: {}", metadata.offset());
           log.info("Timestamp: {}", metadata.timestamp());
         });
+  }
+
+  @Test
+  void testProduceMessageWithKey() {
+    String targetTopic = "simple-topic";
+    for (int i = 0; i < 10; i++) {
+
+      String msgKey = String.format("id_%d", i);
+      String msgValue = String.format("Message %d", i);
+
+      ProducerRecord<String, String> simpleProducerRecord =
+          new ProducerRecord<>(targetTopic, msgKey, msgValue);
+
+      kafkaProducer.send(simpleProducerRecord, (RecordMetadata metadata, Exception exception) -> {
+        if (exception == null) {
+          log.info("\n\n{}:{} -> on partition: {}\n", msgKey, msgValue, metadata.partition());
+        } else {
+          log.error(ExceptionUtils.getStackTrace(exception));
+        }
+      });
+    }
   }
 
 }
